@@ -4,7 +4,7 @@ import time
 import json
 import os
 class Todo:
-    def __init__(self, heading, description):
+    def __init__(self, heading, description,reminder_time):
         self.heading = heading
         self.description = description
         self.reminder_time = None
