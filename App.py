@@ -1,7 +1,10 @@
 import threading
 import datetime
 import time
-
+import random
+import string
+import os
+import signal
 class Todo:
     def __init__(self, heading, description):
         self.heading = heading
@@ -11,26 +14,11 @@ class Todo:
     def __str__(self):
         return f"Heading: {self.heading}\nDescription: {self.description}"
 
-def selectMenu():
-    options = {
-        'a': listTodo,
-        'b': createTodo,
-        'c': deleteTodo,
-        'd': setReminder,
-        'e': updateTodo
-    }
-    selected_option = input("Select an option \na) List todo tasks\nb) Add todo task\nc) Delete todo task\nd) Set reminder to a todo\ne) Update todo task\nPress any key to exit\n").lower()
-    if selected_option in options:
-        options[selected_option]()
-    else:
-        exit()
+todosList = []
 
-def createTodo():
-    heading = input("Enter heading: ")
-    description = input("Enter description: ")
+def createTodo(heading, description):
     todo = Todo(heading, description)
     todosList.append(todo)
-    startApp()
 
 def listTodo():
     if todosList:
@@ -38,49 +26,26 @@ def listTodo():
             print(f"{index + 1}) {todo}")
     else:
         print("No todo items found.")
-    startApp()
 
-def deleteTodo():
-    listTodo()
-    try:
-        id = int(input('Enter id of the todo item to delete: '))
-        if 1 <= id <= len(todosList):
-            todosList.pop(id - 1)
-        else:
-            print("Invalid id.")
-    except ValueError:
-        print("Please enter a valid number.")
-    startApp()
+def deleteTodo(index):
+    if 0 <= index < len(todosList):
+        todosList.pop(index)
+    else:
+        raise ValueError("Invalid index.")
 
-def setReminder():
-    listTodo()
-    try:
-        index = int(input("Enter Id of the task to add reminder: "))
-        if 1 <= index <= len(todosList):
-            reminder_minutes = int(input("Enter reminder time in minutes: "))
-            reminder_time = datetime.datetime.now() + datetime.timedelta(minutes=reminder_minutes)
-            todosList[index - 1].reminder_time = reminder_time
-            print(f'Reminder set for task with id {index} in {reminder_minutes} minutes.')
-        else:
-            print("Invalid task number.")
-    except ValueError:
-        print("Please enter valid numbers.")
-    startApp()
+def setReminder(index, reminder_minutes):
+    if 0 <= index < len(todosList):
+        reminder_time = datetime.datetime.now() + datetime.timedelta(minutes=reminder_minutes)
+        todosList[index].reminder_time = reminder_time
+    else:
+        raise ValueError("Invalid index.")
 
-def updateTodo():
-    listTodo()
-    try:
-        id = int(input('Enter id of the todo item to update: '))
-        if 1 <= id <= len(todosList):
-            new_heading = input("Enter new heading: ")
-            new_description = input("Enter new description: ")
-            todosList[id - 1].heading = new_heading
-            todosList[id - 1].description = new_description
-        else:
-            print("Invalid id.")
-    except ValueError:
-        print("Please enter a valid number.")
-    startApp()
+def updateTodo(index, new_heading, new_description):
+    if 0 <= index < len(todosList):
+        todosList[index].heading = new_heading
+        todosList[index].description = new_description
+    else:
+        raise ValueError("Invalid index.")
 
 def checkReminders():
     while True:
@@ -94,9 +59,35 @@ def checkReminders():
 def startApp():
     selectMenu()
 
-if __name__ == "__main__":
-    todosList = []
+def selectMenu():
+
+    options = {
+        'a': listTodo,
+        'b': lambda: createTodo(input("Enter heading: "), input("Enter description: ")),
+        'c': lambda: deleteTodo(int(input("Enter id of the todo item to delete: ")) - 1),
+        'd': lambda: setReminder(int(input("Enter Id of the task to add reminder: ")) - 1, int(input("Enter reminder time in minutes: "))),
+        'e': lambda: updateTodo(int(input("Enter id of the todo item to update: ")) - 1, input("Enter new heading: "), input("Enter new description: "))
+    }
+    while True:
+        selected_option = input("Select an option \na) List todo tasks\nb) Add todo task\nc) Delete todo task\nd) Set reminder to a todo\ne) Update todo task\nPress any key to exit\n").lower()
+        if selected_option in options:
+            options[selected_option]()
+        else:
+            break    
+# def fileTest(): 
+#     while True:
+#         time.sleep(10)
+#         pid = os.getpid()
+#         print(pid,"filtest") 
+#         x = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+#         f = open(x, "x")
+# def sigKillFunc():
+#     os.kill(pid, signal.SIGKILL) 
+
+if __name__ == "__main__": 
     # Start a thread to check reminders in the background
     reminder_thread = threading.Thread(target=checkReminders, daemon=True)
     reminder_thread.start()
+    # fileThread = threading.Thread(target=fileTest,daemon=True)
+    # fileThread.start()
     startApp()
