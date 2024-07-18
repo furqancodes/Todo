@@ -1,5 +1,5 @@
 import unittest
-from app import createTodo, deleteTodo, setReminder, updateTodo, todosList
+from App import createTodo, deleteTodo, setReminder, updateTodo, todosList,moveTodoItem,Status
 
 class TestTodoApp(unittest.TestCase):
 
@@ -32,6 +32,11 @@ class TestTodoApp(unittest.TestCase):
         updateTodo(0, "Updated Task", "Updated Description")
         self.assertEqual(todosList[0].heading, "Updated Task")
         self.assertEqual(todosList[0].description, "Updated Description")
+
+    def test_move_status(self):
+        createTodo('Test heading',"Test Description")
+        moveTodoItem(0)
+        self.assertEqual(todosList[0].status,Status.IN_PROGRESS.value)
 
 if __name__ == '__main__':
     unittest.main()
