@@ -16,10 +16,10 @@ status_names = {
     3: "Completed"
 }
 
-def createTodo(heading, description):
+def create_todo(heading, description):
     insert_todo(heading, description, None, Status.NOT_STARTED.value, None, None)
 
-def listTodo():
+def list_todo():
     todos_data = get_todos()
     if todos_data:
         for todo_data in todos_data:
@@ -37,14 +37,14 @@ def listTodo():
 def item_exists(todo_id):
     return get_todo_by_id(todo_id) is not None
 
-def deleteTodo(todo_id):
+def delete_todo(todo_id):
     if item_exists(todo_id):
         delete_todo_by_id(todo_id)
     else:
         print("Todo item not found.")
         raise(ValueError)
 
-def setReminder(todo_id, reminder_minutes):
+def set_reminder(todo_id, reminder_minutes):
     if item_exists(todo_id):
         reminder_time = datetime.datetime.now() + datetime.timedelta(minutes=reminder_minutes)
         todo_data = get_todo_by_id(todo_id)
@@ -52,14 +52,14 @@ def setReminder(todo_id, reminder_minutes):
     else:
         print("Todo item not found.")
 
-def updateTodo(todo_id, new_heading, new_description):
+def update_todo_item(todo_id, new_heading, new_description):
     if item_exists(todo_id):
         todo_data = get_todo_by_id(todo_id)
         update_todo(todo_data['id'], new_heading, new_description, todo_data['reminder_time'], todo_data['status'], todo_data['start_date'], todo_data['end_date'])
     else:
         print("Todo item not found.")
 
-def checkReminders():
+def check_reminders():
     while True:
         current_time = datetime.datetime.now()
         todos_data = get_todos()
@@ -69,7 +69,7 @@ def checkReminders():
                 update_todo(todo_data['id'], todo_data['heading'], todo_data['description'], None, todo_data['status'], todo_data['start_date'], todo_data['end_date'])
         time.sleep(60)  # Check every minute
 
-def moveTodoItem(todo_id):
+def move_todo_item(todo_id):
     if item_exists(todo_id):
         todo_data = get_todo_by_id(todo_id)
         status = todo_data['status']
@@ -83,20 +83,20 @@ def moveTodoItem(todo_id):
     else:
         print("Todo item not found.")
 
-def startApp():
-    selectMenu()
+def start_app():
+    select_menu()
 
-def selectMenu():
+def select_menu():
     options = {
-        'a': listTodo,
-        'b': lambda: createTodo(input("Enter heading: "), input("Enter description: ")),
-        'c': lambda: deleteTodo(int(input("Enter Id of the todo item to delete: "))),
-        'd': lambda: setReminder(int(input("Enter Id of the task to add reminder: ")), int(input("Enter reminder time in minutes: "))),
-        'e': lambda: updateTodo(int(input("Enter Id of the todo item to update: ")), input("Enter new heading: "), input("Enter new description: ")),
-        'f': lambda: moveTodoItem(int(input("Enter Id of the task to move: ")))
+        'a': list_todo,
+        'b': lambda: create_todo(input("Enter heading: "), input("Enter description: ")),
+        'c': lambda: delete_todo(int(input("Enter Id of the todo item to delete: "))),
+        'd': lambda: set_reminder(int(input("Enter Id of the task to add reminder: ")), int(input("Enter reminder time in minutes: "))),
+        'e': lambda: update_todo_item(int(input("Enter Id of the todo item to update: ")), input("Enter new heading: "), input("Enter new description: ")),
+        'f': lambda: move_todo_item(int(input("Enter Id of the task to move: ")))
     }
     while True:
-        listTodo()
+        list_todo()
         selected_option = input("Select an option \na) List todo tasks\nb) Add todo task\nc) Delete todo task\nd) Set reminder to a todo\ne) Update todo task\nf) Move todo task\nPress any key to exit\n").lower()
         if selected_option in options:
             options[selected_option]()
@@ -104,10 +104,8 @@ def selectMenu():
             break
 
 if __name__ == "__main__":
-    # Start a thread to check reminders in the background
     Database.initialize()
-    reminder_thread = threading.Thread(target=checkReminders, daemon=True)
+    reminder_thread = threading.Thread(target=check_reminders, daemon=True)
     reminder_thread.start()
     create_table()
-
-    startApp()
+    start_app()

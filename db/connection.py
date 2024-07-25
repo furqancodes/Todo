@@ -1,5 +1,4 @@
 from psycopg2 import pool
-
 from config.config import Config
 
 class Database:
@@ -16,6 +15,13 @@ class Database:
             host=Config.get('host'),
             port=Config.get("port")
         )
+
+    def __enter__(self):
+        self.connection = Database.get_connection()
+        return self.connection
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        Database.return_connection(self.connection)
 
     @staticmethod
     def get_connection():
