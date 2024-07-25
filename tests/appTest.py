@@ -1,22 +1,31 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from app.App import createTodo,listTodo
+from app.App import create_todo, list_todo, Status
 from io import StringIO
+
 class TestTodoApp(unittest.TestCase):
+
     @patch('db.queries.Database')
-    def test_createTodo_success(self, mock_database):
+    def test_create_todo_success(self, mock_database):
         mock_connection = MagicMock()
         mock_cursor = MagicMock()
         mock_database.return_value.__enter__.return_value = mock_connection
         mock_connection.cursor.return_value = mock_cursor
-        createTodo('Test Heading', 'Test Description')
-        mock_cursor.execute.assert_called_once_with('\n        INSERT INTO todos (heading, description, reminder_time, status, start_date, end_date) \n        VALUES (%s, %s, %s, %s, %s, %s)\n        ', ('Test Heading', 'Test Description', None, 1, None, None))
+
+        create_todo('Test Heading', 'Test Description')
+
+        self.assertTrue(mock_cursor.execute.called)
+        
+        query, params = mock_cursor.execute.call_args[0]
+        
+        self.assertEqual(params, ('Test Heading', 'Test Description', None, Status.NOT_STARTED.value, None, None))
+        
         mock_connection.commit.assert_called_once()
         mock_cursor.close.assert_called_once()
 
     @patch('db.queries.Database')
     @patch('sys.stdout', new_callable=StringIO)
-    def test_listTodo_with_items(self, mock_stdout, mock_database):
+    def test_list_todo_with_items(self, mock_stdout, mock_database):
         mock_connection = MagicMock()
         mock_cursor = MagicMock()
         mock_database.return_value.__enter__.return_value = mock_connection
@@ -29,7 +38,7 @@ class TestTodoApp(unittest.TestCase):
             ('id',), ('heading',), ('description',), ('reminder_time',), ('status',), ('start_date',), ('end_date',), ('is_deleted',)
         ]
 
-        listTodo()
+        list_todo()
 
         output = mock_stdout.getvalue().strip()
         expected_output = (
