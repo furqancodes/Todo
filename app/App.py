@@ -2,8 +2,9 @@ import threading
 import datetime
 import time
 from db.connection import Database
-from db.queries import create_table, insert_todo, get_todos, get_todo_by_id, update_todo, delete_todo_by_id
+from db.queries import insert_todo, get_todos, get_todo_by_id, update_todo, delete_todo_by_id,get_or_create_todos_table
 from enum import Enum
+from pytz import timezone
 
 class Status(Enum):
     NOT_STARTED = 1
@@ -17,7 +18,7 @@ status_names = {
 }
 
 def create_todo(heading, description):
-    insert_todo(heading, description, None, Status.NOT_STARTED.value, None, None)
+    insert_todo(heading, description)
 
 def list_todo():
     todos_data = get_todos()
@@ -64,7 +65,7 @@ def check_reminders():
         current_time = datetime.datetime.now()
         todos_data = get_todos()
         for todo_data in todos_data:
-            if todo_data['reminder_time'] and current_time >= todo_data['reminder_time']:
+            if todo_data['reminder_time'] and current_time.replace(tzinfo=timezone('UTC')) >= todo_data['reminder_time'].replace(tzinfo=timezone('UTC')):
                 print(f'Reminder for task "{todo_data["heading"]}" reached at {current_time.strftime("%Y-%m-%d %H:%M:%S")}.')
                 update_todo(todo_data['id'], todo_data['heading'], todo_data['description'], None, todo_data['status'], todo_data['start_date'], todo_data['end_date'])
         time.sleep(60)  # Check every minute
@@ -107,5 +108,4 @@ if __name__ == "__main__":
     Database.initialize()
     reminder_thread = threading.Thread(target=check_reminders, daemon=True)
     reminder_thread.start()
-    create_table()
     start_app()

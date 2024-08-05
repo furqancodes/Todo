@@ -1,36 +1,28 @@
-from psycopg2 import pool
+from sqlalchemy import create_engine
 from config.config import Config
 
 class Database:
-    connection_pool = None
+    engine = None
 
     @staticmethod
     def initialize():
-        Database.connection_pool = pool.SimpleConnectionPool(
-            1,
-            10,
-            database=Config.get('dbname'),
-            user=Config.get('user'),
-            password=Config.get('password'),
-            host=Config.get('host'),
-            port=Config.get("port")
-        )
-
-    def __enter__(self):
-        self.connection = Database.get_connection()
-        return self.connection
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        Database.return_connection(self.connection)
+        if Database.engine is None:
+            Database.engine = create_engine(Config['db_url'])
 
     @staticmethod
     def get_connection():
-        return Database.connection_pool.getconn()
+        if Database.engine is None:
+            Database.initialize()
+        return Database.engine.connect()
 
-    @staticmethod
-    def return_connection(connection):
-        Database.connection_pool.putconn(connection)
+    def __enter__(self):
+        self.connection = Database.get_connection()
+        self.transaction = self.connection.begin()
+        return self.connection
 
-    @staticmethod
-    def close_all_connections():
-        Database.connection_pool.closeall()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            self.transaction.rollback()
+        else:
+            self.transaction.commit()
+        self.connection.close()
