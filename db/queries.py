@@ -1,70 +1,81 @@
+from sqlalchemy import MetaData, Table,insert,Column,Integer,String,TIMESTAMP,Boolean
+from sqlalchemy.exc import SQLAlchemyError
 from db.connection import Database
 
-def create_table():
-    with Database() as connection:
-        cursor = connection.cursor()
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS todos (
-            id SERIAL PRIMARY KEY,
-            heading VARCHAR(255),
-            description TEXT,
-            reminder_time TIMESTAMP,
-            status INTEGER,
-            start_date TIMESTAMP,
-            end_date TIMESTAMP,
-            is_deleted BOOLEAN DEFAULT FALSE
-        )
-        """)
-        connection.commit()
-        cursor.close()
+metadata = MetaData()
 
-def insert_todo(heading, description, reminder_time, status, startDate, endDate):
+def get_or_create_todos_table():
     with Database() as connection:
-        cursor = connection.cursor()
-        cursor.execute("""
-        INSERT INTO todos (heading, description, reminder_time, status, start_date, end_date) 
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """, (heading, description, reminder_time, status, startDate, endDate))
-        connection.commit()
-        cursor.close()
+        todos = Table('todos', metadata,
+                      Column('id', Integer, primary_key=True, autoincrement=True),
+                      Column('heading', String(255), nullable=False),
+                      Column('description', String, nullable=True),
+                      Column('reminder_time', TIMESTAMP, nullable=True),
+                      Column('status', Integer, nullable=False),
+                      Column('start_date', TIMESTAMP, nullable=True),
+                      Column('end_date', TIMESTAMP, nullable=True),
+                      Column('is_deleted', Boolean, default=False),
+                      extend_existing=True)
+
+        if not connection.dialect.has_table(connection, 'todos'):
+            metadata.create_all(connection)
+        else:
+            metadata.reflect(bind=connection, only=['todos'])
+    return todos
+
+todos = get_or_create_todos_table()
+
+def insert_todo(heading, description):
+    with Database() as connection:
+        try:
+            query = insert(todos).values(heading=heading, description=description, status=1)
+            print(query,"query")
+            connection.execute(query)
+            print("commiying")
+        except SQLAlchemyError as e:
+            print(e)
 
 def get_todos():
     with Database() as connection:
-        cursor = connection.cursor()
-        cursor.execute("SELECT * FROM todos WHERE is_deleted = FALSE")
-        columns = [desc[0] for desc in cursor.description]  # Get column names
-        rows = cursor.fetchall()
-        todos = [dict(zip(columns, row)) for row in rows]
-        cursor.close()
-    return todos
+        try:
+            query = todos.select().where(todos.c.is_deleted == False)
+            result = connection.execute(query)
+            rows = result.fetchall()
+            columns =  result.keys()
+            return [dict(zip(columns, row)) for row in rows]
+
+        except SQLAlchemyError as e:
+            print(e)
+            return []
 
 def get_todo_by_id(todo_id):
     with Database() as connection:
-        cursor = connection.cursor()
-        cursor.execute("SELECT * FROM todos WHERE id = %s", (todo_id,))
-        row = cursor.fetchone()
-        if row:
-            columns = [desc[0] for desc in cursor.description]
-            todo = dict(zip(columns, row))
-        else:
-            todo = None
-        cursor.close()
-    return todo
+        try:
+            query = todos.select().where(todos.c.id == todo_id, todos.c.is_deleted == False)
+            result = connection.execute(query)
+            row = result.fetchone()
+            columns =  result.keys()
 
-def update_todo(todo_id, heading, description, reminder_time, status, startDate, endDate):
+            return dict(zip(columns, row)) if row else None
+        except SQLAlchemyError as e:
+            print(e)
+            return None
+
+def update_todo(todo_id, heading, description, reminder_time, status, start_date, end_date):
     with Database() as connection:
-        cursor = connection.cursor()
-        cursor.execute("""
-        UPDATE todos
-        SET heading = %s, description = %s, reminder_time = %s, status = %s, start_date = %s, end_date = %s
-        WHERE id = %s
-        """, (heading, description, reminder_time, status, startDate, endDate, todo_id))
-        connection.commit()
-        cursor.close()
+        try:
+            query = todos.update().where(todos.c.id == todo_id).values(
+                heading=heading, description=description, reminder_time=reminder_time,
+                status=status, start_date=start_date, end_date=end_date
+            )
+            connection.execute(query)
+        except SQLAlchemyError as e:
+            print(e)
 
 def delete_todo_by_id(todo_id):
     with Database() as connection:
-        cursor = connection.cursor()
-        cursor.execute("UPDATE todos SET is_deleted = TRUE WHERE id = %s", (todo_id,))
-        connection.commit()
-        cursor.close()
+        try:
+            query = todos.update().where(todos.c.id == todo_id).values(is_deleted=True)
+            connection.execute(query)
+        except SQLAlchemyError as e:
+            print(e)
