@@ -29,9 +29,7 @@ def insert_todo(heading, description):
     with Database() as connection:
         try:
             query = insert(todos).values(heading=heading, description=description, status=1)
-            print(query,"query")
             connection.execute(query)
-            print("commiying")
         except SQLAlchemyError as e:
             print(e)
 
