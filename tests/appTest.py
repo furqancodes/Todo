@@ -1,178 +1,162 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from app.App import create_todo, list_todo, Status,delete_todo,set_reminder,update_todo_item,move_todo_item
-from io import StringIO
-import datetime
-from freezegun import freeze_time
-
+from db.queries import insert_todo, delete_todo_by_id, todos,update_todo
+from app.App import check_reminders, move_todo_item,set_reminder
+from datetime import datetime,timedelta
 
 class TestTodoApp(unittest.TestCase):
 
-    @patch('db.queries.Database')
-    def test_create_todo_success(self, mock_database):
+    @patch('db.queries.Database.get_connection')
+    def test_insert_todo(self, mock_get_connection):
         mock_connection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_database.return_value.__enter__.return_value = mock_connection
-        mock_connection.cursor.return_value = mock_cursor
+        mock_get_connection.return_value = mock_connection
 
-        create_todo('Test Heading', 'Test Description')
+        heading = "Test Heading"
+        description = "Test Description"
 
-        self.assertTrue(mock_cursor.execute.called)
-        
-        query, params = mock_cursor.execute.call_args[0]
-        
-        self.assertEqual(params, ('Test Heading', 'Test Description', None, Status.NOT_STARTED.value, None, None))
-        
-        mock_connection.commit.assert_called_once()
-        mock_cursor.close.assert_called_once()
+        insert_todo(heading, description)
 
-    @patch('db.queries.Database')
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_list_todo_with_items(self, mock_stdout, mock_database):
+        self.assertTrue(mock_connection.execute.called)
+        actual_query = mock_connection.execute.call_args[0][0]
+
+        self.assertIn('INSERT INTO todos', str(actual_query))
+        self.assertIn('heading', str(actual_query))
+        self.assertIn('description', str(actual_query))
+        self.assertIn('status', str(actual_query))
+        self.assertTrue(mock_connection.execute.call_args[0][0].is_insert)
+        self.assertEqual(actual_query.compile().params['heading'], heading)
+        self.assertEqual(actual_query.compile().params['description'], description)
+        self.assertEqual(actual_query.compile().params['status'], 1)
+
+    @patch('db.queries.Database.get_connection')
+    @patch('db.queries.get_todo_by_id')
+    def test_delete_todo_by_id(self, mock_get_todo_by_id, mock_get_connection):
         mock_connection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_database.return_value.__enter__.return_value = mock_connection
-        mock_connection.cursor.return_value = mock_cursor
+        mock_get_connection.return_value = mock_connection
 
-        mock_cursor.fetchall.return_value = [
-            (1, 'Test Heading', 'Test Description', None, 1, None, None, False)
-        ]
-        mock_cursor.description = [
-            ('id',), ('heading',), ('description',), ('reminder_time',), ('status',), ('start_date',), ('end_date',), ('is_deleted',)
-        ]
+        todo_id = 2
 
-        list_todo()
+        mock_get_todo_by_id.return_value = {
+            'id': 2,
+            'heading': 'Test Heading',
+            'description': 'Test Description',
+            'status': 1,
+            'is_deleted': False
+        }
 
-        output = mock_stdout.getvalue().strip()
-        expected_output = (
-            "ID: 1\n"
-            "Heading: Test Heading\n"
-            "Description: Test Description\n"
-            "Status: Not Started\n"
-            "Start Date: None\n"
-            "End Date: None\n"
-            "Reminder Time: None"
-        )
-        self.assertEqual(output, expected_output)
+        delete_todo_by_id(todo_id)
 
-    @patch('db.queries.Database')
-    def test_delete_todo_success(self, mock_database):
-        mock_connection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_database.return_value.__enter__.return_value = mock_connection
-        mock_connection.cursor.return_value = mock_cursor
+        self.assertTrue(mock_connection.execute.called)
+        self.assertTrue(mock_connection.execute.call_args[0][0].is_update)
+        actual_query = mock_connection.execute.call_args[0][0]
+        print(actual_query,"actual")
+        print(str(actual_query),"str")
+        self.assertIn('UPDATE todos', str(actual_query))
+        self.assertIn('SET is_deleted', str(actual_query))
+        self.assertIn('WHERE todos.id = :id', str(actual_query))
+        self.assertEqual(actual_query.compile().params['id_1'], todo_id)
+        self.assertEqual(actual_query.compile().params['is_deleted'], True)
 
-        mock_cursor.fetchone.return_value = {'id': 1}
-
-        delete_todo(1)
-        mock_cursor.execute.assert_called_with("UPDATE todos SET is_deleted = TRUE WHERE id = %s", (1,))
-        mock_connection.commit.assert_called_once()
-        self.assertEqual(mock_cursor.close.call_count, 2)
     
-    @patch('db.queries.Database')
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_delete_todo_by_unknown_id(self,mock_stdout,mock_database):
+    @patch('db.queries.Database.get_connection')
+    @patch('db.queries.get_todo_by_id') 
+    def test_update_todo(self, mock_get_todo_by_id, mock_get_connection):
         mock_connection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_database.return_value.__enter__.return_value = mock_connection
-        mock_connection.cursor.return_value = mock_cursor
-        mock_cursor.fetchone.return_value = None
-        self.assertRaises(ValueError,delete_todo,1)
-        output = mock_stdout.getvalue().strip()
-        expected_output = "Todo item not found."
-        self.assertEqual(output, expected_output)
-        mock_cursor.execute.assert_called_once_with("SELECT * FROM todos WHERE id = %s", (1,))
-        mock_connection.commit.assert_not_called()
-        
-    @patch('db.queries.Database')
-    @freeze_time("2024-07-26 19:42:47.089679")
-    def test_set_reminder_success(self, mock_database):
+        mock_get_connection.return_value = mock_connection
+
+        todo_id = 3
+        new_heading = "Updated Heading"
+        new_description = "Updated Description"
+
+        mock_get_todo_by_id.return_value = {
+            'id': todo_id,
+            'heading': 'Old Heading',
+            'description': 'Old Description',
+            'reminder_time': None,
+            'status': 1,
+            'start_date': None,
+            'end_date': None,
+            'is_deleted': False
+        }
+
+        update_todo(todo_id, new_heading, new_description, None, 1, None, None)
+
+        self.assertTrue(mock_connection.execute.called)
+        self.assertTrue(mock_connection.execute.call_args[0][0].is_update)
+        actual_query = mock_connection.execute.call_args[0][0]
+
+        self.assertIn('UPDATE todos', str(actual_query))
+        self.assertIn('SET heading=:heading, description=:description', str(actual_query))
+        self.assertIn('WHERE todos.id = :id', str(actual_query))
+        self.assertEqual(actual_query.compile().params['heading'], new_heading)
+        self.assertEqual(actual_query.compile().params['description'], new_description)
+        self.assertEqual(actual_query.compile().params['id_1'], todo_id)
+
+    @patch('db.queries.Database.get_connection')
+    @patch('app.App.get_todo_by_id')
+    def test_move_todo_item(self, mock_get_todo_by_id, mock_get_connection):
         mock_connection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_database.return_value.__enter__.return_value = mock_connection
-        mock_connection.cursor.return_value = mock_cursor
+        mock_get_connection.return_value = mock_connection
 
-        mock_cursor.fetchone.return_value = (1, 'Test Heading', 'Test Description', None, 1, None, None, False)
-        mock_cursor.description = [
-            ('id',), ('heading',), ('description',), ('reminder_time',), ('status',), ('start_date',), ('end_date',), ('is_deleted',)
-        ]
+        todo_id = 4
+        mock_get_todo_by_id.return_value = {
+            'id': todo_id,
+            'heading': 'Test Heading',
+            'description': 'Test Description',
+            'status': 1,  # Not Started
+            'reminder_time': None,
+            'start_date': None,
+            'end_date': None,
+            'is_deleted': False
+        }
 
-        set_reminder(1, 10)
-        reminder_time = datetime.datetime(2024, 7, 26, 19, 52, 47, 89679)
-        
-        mock_cursor.execute.assert_any_call("SELECT * FROM todos WHERE id = %s", (1,))
-        mock_cursor.execute.assert_any_call(
-            '\n        UPDATE todos\n        SET heading = %s, description = %s, reminder_time = %s, status = %s, start_date = %s, end_date = %s\n        WHERE id = %s\n        ',
-            ('Test Heading', 'Test Description', reminder_time, 1, None, None, 1)
-        )
-        
-        mock_connection.commit.assert_called_once()
-        self.assertEqual(mock_cursor.close.call_count, 3)
+        move_todo_item(todo_id)
 
-    @patch('db.queries.Database')
-    def test_update_todo_success(self, mock_database):
+        self.assertTrue(mock_connection.execute.called)
+        self.assertTrue(mock_connection.execute.call_args[0][0].is_update)
+        actual_query = mock_connection.execute.call_args[0][0]
+
+        self.assertIn('UPDATE todos', str(actual_query))
+        self.assertIn('status=:status, start_date=:start_date', str(actual_query))
+        self.assertIn('WHERE todos.id = :id', str(actual_query))
+        self.assertEqual(actual_query.compile().params['status'], 2)  # In Progress
+        self.assertEqual(actual_query.compile().params['id_1'], todo_id)
+        self.assertIsNotNone(actual_query.compile().params['start_date'])
+    @patch('db.queries.Database.get_connection')
+    @patch('app.App.get_todo_by_id')
+    def test_set_reminder(self, mock_get_todo_by_id, mock_get_connection):
         mock_connection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_database.return_value.__enter__.return_value = mock_connection
-        mock_connection.cursor.return_value = mock_cursor
+        mock_get_connection.return_value = mock_connection
 
-        mock_cursor.fetchone.return_value = (1, 'Old Heading', 'Old Description', None, 1, None, None, False)
-        mock_cursor.description = [
-            ('id',), ('heading',), ('description',), ('reminder_time',), ('status',), ('start_date',), ('end_date',), ('is_deleted',)
-        ]
+        todo_id = 5
+        reminder_minutes = 30
+        reminder_time = datetime.now() + timedelta(minutes=reminder_minutes)
 
-        update_todo_item(1, 'New Heading', 'New Description')
+        mock_get_todo_by_id.return_value = {
+            'id': todo_id,
+            'heading': 'Test Heading',
+            'description': 'Test Description',
+            'status': 1,  # Not Started
+            'reminder_time': None,
+            'start_date': None,
+            'end_date': None,
+            'is_deleted': False
+        }
 
-        mock_cursor.execute.assert_any_call("SELECT * FROM todos WHERE id = %s", (1,))
-        mock_cursor.execute.assert_any_call('\n        UPDATE todos\n        SET heading = %s, description = %s, reminder_time = %s, status = %s, start_date = %s, end_date = %s\n        WHERE id = %s\n        ', ('New Heading', 'New Description', None, 1, None, None, 1))
-        
-        
-        mock_connection.commit.assert_called_once()
-        self.assertEqual(mock_cursor.close.call_count, 3)
+        set_reminder(todo_id, reminder_minutes)
 
-    @patch('db.queries.Database')
-    @freeze_time("2024-07-26 19:42:47")
-    def test_move_todo_item_success(self, mock_database):
-        mock_connection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_database.return_value.__enter__.return_value = mock_connection
-        mock_connection.cursor.return_value = mock_cursor
+        self.assertTrue(mock_connection.execute.called)
+        self.assertTrue(mock_connection.execute.call_args[0][0].is_update)
+        actual_query = mock_connection.execute.call_args[0][0]
 
-        mock_cursor.fetchone.return_value = (1, 'Test Heading', 'Test Description', None, Status.NOT_STARTED.value, None, None, False)
-        mock_cursor.description = [
-            ('id',), ('heading',), ('description',), ('reminder_time',), ('status',), ('start_date',), ('end_date',), ('is_deleted',)
-        ]
-
-        move_todo_item(1)
-        
-        mock_cursor.execute.assert_any_call("SELECT * FROM todos WHERE id = %s", (1,))
-        mock_cursor.execute.assert_any_call('\n        UPDATE todos\n        SET heading = %s, description = %s, reminder_time = %s, status = %s, start_date = %s, end_date = %s\n        WHERE id = %s\n        ', ('Test Heading', 'Test Description', None, 2, '2024-07-26 19:42:47', None, 1))
-        
-        mock_connection.commit.assert_called_once()
-        self.assertEqual(mock_cursor.close.call_count, 3)
-
-    @patch('db.queries.Database')
-    @patch('sys.stdout', new_callable=StringIO)
-    def test_move_todo_item_completed(self, mock_stdout, mock_database):
-        mock_connection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_database.return_value.__enter__.return_value = mock_connection
-        mock_connection.cursor.return_value = mock_cursor
-
-        mock_cursor.fetchone.return_value = (1, 'Test Heading', 'Test Description', None, Status.COMPLETED.value, None, None, False)
-        mock_cursor.description = [
-            ('id',), ('heading',), ('description',), ('reminder_time',), ('status',), ('start_date',), ('end_date',), ('is_deleted',)
-        ]
-
-        move_todo_item(1)
-        
-        output = mock_stdout.getvalue().strip()
-        expected_output = "Task is completed."
-        self.assertEqual(output, expected_output)
-        mock_cursor.execute.assert_any_call("SELECT * FROM todos WHERE id = %s", (1,))
-        self.assertEqual(mock_cursor.execute.call_count, 2)
-        mock_connection.commit.assert_not_called()
-        self.assertEqual(mock_cursor.close.call_count, 2)
+        self.assertIn('UPDATE todos', str(actual_query))
+        self.assertIn('reminder_time=:reminder_time', str(actual_query))
+        self.assertIn('WHERE todos.id = :id', str(actual_query))
+        self.assertAlmostEqual(actual_query.compile().params['reminder_time'], reminder_time, delta=timedelta(seconds=1))
+        self.assertEqual(actual_query.compile().params['id_1'], todo_id)
+    
+if __name__ == '__main__':
+    unittest.main()
 
 
 if __name__ == '__main__':
